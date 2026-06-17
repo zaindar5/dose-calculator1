@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dose Calculator</title>
+  <style>
+    :root { --bg:#f6f7fb; --card:#fff; --text:#111; --muted:#6b7280; --border:#e5e7eb; --accent:#2563eb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 24px; }
+    h1 { font-size: 24px; margin: 0 0 6px; }
+    .sub { color: var(--muted); font-size: 14px; margin-bottom: 10px; }
+    .row { display: flex; align-items: center; gap: 10px; font-size: 14px; color: #374151; margin: 6px 0 20px; flex-wrap: wrap; }
+    select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 12px; }
+    .card { background: var(--card); border-radius: 16px; padding: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); border: 1px solid var(--border); margin-bottom: 18px; }
+    .card h2 { font-size: 20px; margin: 0 0 8px; }
+    .muted { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+    label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 6px; color: #374151; }
+    input[type=number] { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; font-size: 14px; }
+    .grid { display: grid; gap: 14px; }
+    @media (min-width: 640px) { .grid-2 { grid-template-columns: repeat(2, 1fr); } .grid-3 { grid-template-columns: repeat(3, 1fr); } }
+    .pillbar { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pill { background: #f3f4f6; border-radius: 999px; padding: 8px 14px; font-size: 13px; border: 1px solid var(--border); cursor: pointer; }
+    .pill.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .infobox { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: #fafafa; }
+    .infobox .lbl { font-size: 12px; color: #6b7280; }
+    .infobox .val { font-size: 18px; font-weight: 700; }
+    footer { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  </style>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useMemo } = React;
+
+    function roundTo(val, step) {
+      if (!isFinite(val)) return 0;
+      const inv = 1 / step;
+      return Math.round(val * inv) / inv;
+    }
+    const safeNum = (n) => (isNaN(n) || !isFinite(n) ? 0 : n);
+
+    function InfoBox({ label, value }) {
+      return (
+        <div className="infobox">
+          <div className="lbl">{label}</div>
+          <div className="val">{value}</div>
+        </div>
+      );
+    }
+
+    function DoseCalculator() {
+      const [roundStep, setRoundStep] = useState(0.1);
+
+      // Augmentin mg per kg per day, split BD
+      const [wtA, setWtA] = useState(0);
+      const [augmentinAssumedStrength, setAugmentinAssumedStrength] = useState(200); // mg per 5 mL assumed
+      const [augmentinDailyMgPerKg, setAugmentinDailyMgPerKg] = useState(25); // default 25
+      const augDoseOptions = [20, 25, 30];
+
+      const aug = useMemo(() => {
+        const wt = safeNum(wtA);
+        const dailyMg = wt * augmentinDailyMgPerKg;
+        const perDoseMg = dailyMg / 2;
+        const augMgPerMl = augmentinAssumedStrength / 5;
+        const perDoseMl = perDoseMg / augMgPerMl;
+        return {
+          dailyMg,
+          perDoseMg,
+          perDoseMlRounded: roundTo(perDoseMl, roundStep),
+        };
+      }, [wtA, augmentinDailyMgPerKg, augmentinAssumedStrength, roundStep]);
+
+      // Ibuprofen per dose
+      const [wtI, setWtI] = useState(0);
+      const [ibuMgPerKg, setIbuMgPerKg] = useState(10);
+      const IBU_MG_PER_ML = 100 / 5;
+      const IBU_LABEL = "Ibuprofen suspension 100 mg per 5 mL";
+
+      const ibu = useMemo(() => {
+        const wt = safeNum(wtI);
+        const perDoseMg = wt * ibuMgPerKg;
+        const perDoseMl = perDoseMg / IBU_MG_PER_ML;
+        return { perDoseMg, perDoseMlRounded: roundTo(perDoseMl, roundStep) };
+      }, [wtI, ibuMgPerKg, roundStep]);
+
+      // Prednisolone mg per kg per day, BD or TDS
+      const [wtP, setWtP] = useState(0);
+      const [predMgPerKgDay, setPredMgPerKgDay] = useState(1.0);
+      const [predMode, setPredMode] = useState("TDS");
+      const PRED_MG_PER_ML = 2.5 / 5;
+      const PRED_LABEL = "Prednisolone suspension 2.5 mg per 5 mL";
+
+      const pred = useMemo(() => {
+        const wt = safeNum(wtP);
+        const dailyMg = wt * predMgPerKgDay;
+        const divisor = predMode === "BD" ? 2 : 3;
+        const perDoseMg = dailyMg / divisor;
+        const perDoseMl = perDoseMg / PRED_MG_PER_ML;
+        const dailyMl = dailyMg / PRED_MG_PER_ML;
+        return {
+          perDoseMg,
+          perDoseMlRounded: roundTo(perDoseMl, roundStep),
+          dailyMlRounded: roundTo(dailyMl, roundStep),
+        };
+      }, [wtP, predMgPerKgDay, predMode, roundStep]);
+
+      // Maxolon per dose
+      const [wtM, setWtM] = useState(0);
+      const [maxoMgPerKg, setMaxoMgPerKg] = useState(0.3);
+      const MAXO_MG_PER_ML = 1;
+      const MAXO_LABEL = "Maxolon (metoclopramide) 5 mg per 5 mL";
+
+      const maxo = useMemo(() => {
+        const wt = safeNum(wtM);
+        const perDoseMg = wt * maxoMgPerKg;
+        const perDoseMl = perDoseMg / MAXO_MG_PER_ML;
+        return { perDoseMg, perDoseMlRounded: roundTo(perDoseMl, roundStep) };
+      }, [wtM, maxoMgPerKg, roundStep]);
+
+      return (
+        <div className="wrap">
+          <h1>Dose calculator</h1>
+          <div className="sub">Quick weight based outputs for Augmentin, Ibuprofen, Prednisolone, and Maxolon. All volumes round to the selected step.</div>
+          <div className="row">
+            <label>Round to</label>
+            <select value={roundStep} onChange={(e) => setRoundStep(parseFloat(e.target.value))}>
+              <option value={0.1}>0.1 mL</option>
+              <option value={0.5}>0.5 mL</option>
+              <option value={1}>1 mL</option>
+            </select>
+          </div>
+
+          <div className="card">
+            <h2>Augmentin</h2>
+            <p className="muted">
+              Concentrations: 228 mg per 5 mL is treated as 200 mg per 5 mL, 312.5 mg per 5 mL is treated as 250 mg per 5 mL,
+              and 457 mg per 5 mL is treated as 400 mg per 5 mL. Dose options are 20, 25, or 30 mg per kg per day, divided BD.
+              Default is 25.
+            </p>
+
+            <div className="grid grid-3">
+              <div>
+                <label>Weight kg</label>
+                <input type="number" inputMode="decimal" min="0" step="0.1" value={wtA} onChange={(e)=>setWtA(parseFloat(e.target.value))} placeholder="eg 12.4" />
+              </div>
+
+              <div>
+                <label>Concentration</label>
+                <div className="pillbar">
+                  <button className={"pill " + (augmentinAssumedStrength===200 ? "active": "")} onClick={()=>setAugmentinAssumedStrength(200)}>228 mg per 5 mL (calc 200)</button>
+                  <button className={"pill " + (augmentinAssumedStrength===250 ? "active": "")} onClick={()=>setAugmentinAssumedStrength(250)}>312.5 mg per 5 mL (calc 250)</button>
+                  <button className={"pill " + (augmentinAssumedStrength===400 ? "active": "")} onClick={()=>setAugmentinAssumedStrength(400)}>457 mg per 5 mL (calc 400)</button>
+                </div>
+              </div>
+
+              <div>
+                <label>Dose mg per kg per day</label>
+                <div className="pillbar">
+                  {augDoseOptions.map(v => (
+                    <button key={v} className={"pill " + (augmentinDailyMgPerKg===v ? "active": "")} onClick={()=>setAugmentinDailyMgPerKg(v)}>{v}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-3" style={{marginTop: 14}}>
+              <InfoBox label="Per dose mL" value={`${aug.perDoseMlRounded || 0} mL BD`} />
+              <InfoBox label="Per dose mg" value={`${roundTo(aug.perDoseMg, 1)} mg`} />
+              <InfoBox label="Daily total mg" value={`${roundTo(aug.dailyMg, 1)} mg`} />
+            </div>
+          </div>
+
+          <div className="card">
+            <h2>Ibuprofen</h2>
+            <p className="muted">{IBU_LABEL}. Output shows volume per dose for TDS dosing.</p>
+            <div className="grid grid-2">
+              <div>
+                <label>Weight kg</label>
+                <input type="number" inputMode="decimal" min="0" step="0.1" value={wtI} onChange={(e)=>setWtI(parseFloat(e.target.value))} placeholder="eg 12.4" />
+              </div>
+              <div>
+                <label>Dose mg per kg per dose</label>
+                <div className="pillbar">
+                  {[10, 9, 8, 7, 6, 5].map(v => (
+                    <button key={v} className={"pill " + (ibuMgPerKg===v ? "active": "")} onClick={()=>setIbuMgPerKg(v)}>{v}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-3" style={{marginTop: 14}}>
+              <InfoBox label="Per dose mL" value={`${ibu.perDoseMlRounded || 0} mL TDS`} />
+              <InfoBox label="Per dose mg" value={`${roundTo(ibu.perDoseMg, 1)} mg`} />
+            </div>
+          </div>
+
+          <div className="card">
+            <h2>Prednisolone</h2>
+            <p className="muted">{PRED_LABEL}. Choose mg per kg per day and output as BD or TDS. Default is TDS.</p>
+            <div className="grid grid-3">
+              <div>
+                <label>Weight kg</label>
+                <input type="number" inputMode="decimal" min="0" step="0.1" value={wtP} onChange={(e)=>setWtP(parseFloat(e.target.value))} placeholder="eg 12.4" />
+              </div>
+              <div>
+                <label>Dose mg per kg per day</label>
+                <div className="pillbar">
+                  {[1.0, 0.9, 0.8, 0.7, 0.6, 0.5].map(v => (
+                    <button key={v} className={"pill " + (predMgPerKgDay===v ? "active": "")} onClick={()=>setPredMgPerKgDay(v)}>{v}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label>Output as</label>
+                <div className="pillbar">
+                  {["TDS", "BD"].map(m => (
+                    <button key={m} className={"pill " + (predMode===m ? "active": "")} onClick={()=>setPredMode(m)}>{m}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-3" style={{marginTop: 14}}>
+              <InfoBox label="Per dose mL" value={`${pred.perDoseMlRounded || 0} mL ${predMode}`} />
+              <InfoBox label="Per dose mg" value={`${roundTo(pred.perDoseMg, 1)} mg`} />
+              <InfoBox label="Daily total mL" value={`${pred.dailyMlRounded || 0} mL`} />
+            </div>
+          </div>
+
+          <div className="card">
+            <h2>Maxolon</h2>
+            <p className="muted">{MAXO_LABEL}. Output shows volume per dose for TDS dosing.</p>
+            <div className="grid grid-2">
+              <div>
+                <label>Weight kg</label>
+                <input type="number" inputMode="decimal" min="0" step="0.1" value={wtM} onChange={(e)=>setWtM(parseFloat(e.target.value))} placeholder="eg 12.4" />
+              </div>
+              <div>
+                <label>Dose mg per kg per dose</label>
+                <div className="pillbar">
+                  {[0.3, 0.2, 0.1].map(v => (
+                    <button key={v} className={"pill " + (maxoMgPerKg===v ? "active": "")} onClick={()=>setMaxoMgPerKg(v)}>{v}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-3" style={{marginTop: 14}}>
+              <InfoBox label="Per dose mL" value={`${maxo.perDoseMlRounded || 0} mL TDS`} />
+              <InfoBox label="Per dose mg" value={`${roundTo(maxo.perDoseMg, 2)} mg`} />
+            </div>
+          </div>
+
+          <footer>
+            Clinical use is at your discretion. Always check patient specific factors. This tool does not store patient data.
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<DoseCalculator />);
+  </script>
+</body>
+</html>
